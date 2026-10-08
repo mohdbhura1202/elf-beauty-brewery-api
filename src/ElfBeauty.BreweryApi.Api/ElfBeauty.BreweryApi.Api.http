@@ -1,0 +1,41 @@
+@ElfBeauty.BreweryApi.Api_HostAddress = http://localhost:5170
+@ApiKey = your-dev-key-here
+# Set via: dotnet user-secrets set "ApiKeySettings:ApiKey" "your-dev-key-here" (see README).
+
+### Health check (no API key required)
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/health
+Accept: application/json
+
+### List breweries (name, city, phone) - default paging
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Search + sort by name
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries?search=dog&sortBy=name&sortDirection=asc&pageSize=10
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Sort by city, descending
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries?sortBy=city&sortDirection=desc&pageSize=10
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Sort by distance from a reference point (Denver, CO)
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries?sortBy=distance&latitude=39.7392&longitude=-104.9903&pageSize=10
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Autocomplete search suggestions
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries/autocomplete?query=do&maxResults=10
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Error handling: distance sort without coordinates -> 400
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries?sortBy=distance
+Accept: application/json
+X-Api-Key: {{ApiKey}}
+
+### Error handling: missing API key -> 401
+GET {{ElfBeauty.BreweryApi.Api_HostAddress}}/api/v1/breweries
+Accept: application/json
