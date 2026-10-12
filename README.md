@@ -56,10 +56,11 @@ This section exists so reviewers don't have to guess *why* something was built a
   immediately while a single background refresh updates the external source, repository and cache.
   If no previous snapshot exists (first startup), the request waits for the initial source load and
   returns a clear upstream error if that load fails.
-- **Search is never forwarded to the external API.** All (bounded) brewery data is fetched and
-  cached/stored once per refresh window, then search/sort/paging are applied entirely in our own
-  code against that single dataset. There is intentionally no "search sent upstream, then filtered
-  again locally" double-filtering — one filtering path, one source of truth.
+- **Search is never forwarded to the external API.** The source dataset is fetched and persisted
+  once per refresh window. SQLite applies ordinary search/sort/paging through EF Core query
+  translation; the default in-memory provider applies the same query contract in memory against
+  the bounded snapshot. There is intentionally no "search sent upstream, then filtered again
+  locally" double-filtering — one filtering path, one source of truth per storage provider.
 - **The source load is bounded, and SQLite queries are database-side.** `OpenBreweryDb:MaxPages`
   × `PageSize` caps the dataset fetched from the source (default 1,000 records). With SQLite enabled,
   name/city/search filtering, sorting and paging are executed by EF Core with `Where`, `OrderBy`,
