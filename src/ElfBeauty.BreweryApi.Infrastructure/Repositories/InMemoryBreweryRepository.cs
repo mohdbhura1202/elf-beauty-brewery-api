@@ -29,4 +29,50 @@ public class InMemoryBreweryRepository : IBreweryRepository
             return Task.FromResult(new BrewerySnapshot { Items = _breweries, LastRefreshedUtc = _lastRefreshedUtc });
         }
     }
+
+    public Task<BreweryQueryResult> QueryAsync(BreweryQueryParameters query, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            var filtered = ApplyQuery(_breweries, query);
+            var page = Math.Max(1, query.Page);
+            var pageSize = Math.Clamp(query.PageSize, 1, 500);
+            var items = filtered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+            return Task.FromResult(new BreweryQueryResult
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = filtered.Count,
+                LastRefreshedUtc = _lastRefreshedUtc ?? DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    private static List<Brewery> ApplyQuery(IEnumerable<Brewery> breweries, BreweryQueryParameters query)
+    {
+        IEnumerable<Brewery> result = breweries;
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim();
+            result = result.Where(b => Contains(b.Name, term) || Contains(b.City, term) || Contains(b.State, term));
+        }
+
+        result = query.SortBy switch
+        {
+            BrewerySortBy.Name => query.SortDirection == SortDirection.Ascending
+                ? result.OrderBy(b => b.Name, StringComparer.OrdinalIgnoreCase)
+                : result.OrderByDescending(b => b.Name, StringComparer.OrdinalIgnoreCase),
+            BrewerySortBy.City => query.SortDirection == SortDirection.Ascending
+                ? result.OrderBy(b => b.City, StringComparer.OrdinalIgnoreCase)
+                : result.OrderByDescending(b => b.City, StringComparer.OrdinalIgnoreCase),
+            _ => result
+        };
+
+        return result.ToList();
+    }
+
+    private static bool Contains(string? value, string term) =>
+        !string.IsNullOrEmpty(value) && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 }

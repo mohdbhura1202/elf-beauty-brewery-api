@@ -43,7 +43,33 @@ public class BreweryServiceTests
     {
         var repository = new Mock<IBreweryRepository>();
         repository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new BrewerySnapshot());
+        repository.Setup(r => r.QueryAsync(It.IsAny<BreweryQueryParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BreweryQueryParameters query, CancellationToken _) => QuerySampleBreweries(query));
         return repository;
+    }
+
+    private static BreweryQueryResult QuerySampleBreweries(BreweryQueryParameters query)
+    {
+        IEnumerable<Brewery> result = SampleBreweries();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim();
+            result = result.Where(b => b.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                       b.City.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                       b.State!.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        result = query.SortBy switch
+        {
+            BrewerySortBy.Name when query.SortDirection == SortDirection.Ascending => result.OrderBy(b => b.Name),
+            BrewerySortBy.Name => result.OrderByDescending(b => b.Name),
+            BrewerySortBy.City when query.SortDirection == SortDirection.Ascending => result.OrderBy(b => b.City),
+            BrewerySortBy.City => result.OrderByDescending(b => b.City),
+            _ => result
+        };
+
+        var items = result.ToList();
+        return new BreweryQueryResult { Items = items, Page = 1, PageSize = 50, TotalCount = items.Count };
     }
 
     [Fact]
@@ -155,6 +181,8 @@ public class BreweryServiceTests
         var repository = new Mock<IBreweryRepository>();
         repository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BrewerySnapshot { Items = SampleBreweries(), LastRefreshedUtc = DateTimeOffset.UtcNow.AddMinutes(-2) });
+        repository.Setup(r => r.QueryAsync(It.IsAny<BreweryQueryParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BreweryQueryParameters query, CancellationToken _) => QuerySampleBreweries(query));
         var cache = EmptyCache();
 
         var service = CreateService(apiClient, repository, cache);
@@ -175,6 +203,8 @@ public class BreweryServiceTests
         var repository = new Mock<IBreweryRepository>();
         repository.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BrewerySnapshot { Items = SampleBreweries() });
+        repository.Setup(r => r.QueryAsync(It.IsAny<BreweryQueryParameters>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BreweryQueryParameters query, CancellationToken _) => QuerySampleBreweries(query));
 
         var cache = EmptyCache();
 

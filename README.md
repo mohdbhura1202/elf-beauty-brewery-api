@@ -51,15 +51,22 @@ This section exists so reviewers don't have to guess *why* something was built a
   last-resort fallback if the external API fails. This means the database (when `Storage:Provider`
   is `Sqlite`) is read on every cache miss, not only written to, and the app avoids an unnecessary
   external call immediately after a restart if recent data is already durably stored.
+- **Stale-while-revalidate avoids expiry latency.** During the normal 10-minute fresh window,
+  requests use the fresh in-process cache. After expiry, the bounded previous snapshot is returned
+  immediately while a single background refresh updates the external source, repository and cache.
+  If no previous snapshot exists (first startup), the request waits for the initial source load and
+  returns a clear upstream error if that load fails.
 - **Search is never forwarded to the external API.** All (bounded) brewery data is fetched and
   cached/stored once per refresh window, then search/sort/paging are applied entirely in our own
   code against that single dataset. There is intentionally no "search sent upstream, then filtered
   again locally" double-filtering — one filtering path, one source of truth.
-- **In-memory sort/filter is bounded, not applied to an unbounded dataset.** `OpenBreweryDb:MaxPages`
-  × `PageSize` caps the dataset fetched from the source (default 1,000 records) specifically so that
-  in-memory sort/search/paging stays cheap and predictable for this assignment's scope. For a larger
-  real-world dataset, sorting/filtering would move into the database query (EF Core `OrderBy`/`Where`)
-  instead of in-memory LINQ.
+- **The source load is bounded, and SQLite queries are database-side.** `OpenBreweryDb:MaxPages`
+  × `PageSize` caps the dataset fetched from the source (default 1,000 records). With SQLite enabled,
+  name/city/search filtering, sorting and paging are executed by EF Core with `Where`, `OrderBy`,
+  `CountAsync`, `Skip` and `Take`, so the API does not materialize the complete persisted dataset for
+  ordinary list requests. The default in-memory provider necessarily evaluates queries in memory,
+  but remains bounded by the source cap. Distance sorting uses the bounded coordinate snapshot because
+  the haversine calculation is not portable across the supported storage providers.
 - **`Database.EnsureCreated()` instead of EF Core Migrations.** The SQLite schema here is simple and
   static (no versioned schema changes), so `EnsureCreated()` is used to let a fresh clone run
   immediately without a pre-existing DB file or a separate migration step. A production system with

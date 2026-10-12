@@ -12,6 +12,8 @@ public class BreweryService : IBreweryService
 {
     private const string CacheKey = "breweries:all";
     private const string CacheTimestampKey = "breweries:lastRefreshed";
+    private const string StaleCacheKey = "breweries:stale";
+    private const string StaleCacheTimestampKey = "breweries:stale:lastRefreshed";
 
     // Guards against a cache-stampede: without this, many concurrent requests during a cache
     // miss would each independently call the external API and write to storage at once.
@@ -55,6 +57,19 @@ public class BreweryService : IBreweryService
         }
 
         var (all, lastRefreshed) = await GetAllBreweriesAsync(cancellationToken);
+
+        if (query.SortBy != BrewerySortBy.Distance && query.Latitude is null && query.Longitude is null)
+        {
+            var storedResult = await _repository.QueryAsync(query, cancellationToken);
+            return new PagedResult<Brewery>
+            {
+                Items = storedResult.Items,
+                Page = storedResult.Page,
+                PageSize = storedResult.PageSize,
+                TotalCount = storedResult.TotalCount,
+                LastRefreshedUtc = lastRefreshed
+            };
+        }
 
         IEnumerable<Brewery> filtered = all;
 
@@ -127,6 +142,13 @@ public class BreweryService : IBreweryService
             return (cached, cachedTimestamp);
         }
 
+        if (TryGetStaleCached(out var stale, out var staleTimestamp))
+        {
+            _logger.LogInformation("Serving stale brewery cache while refreshing in the background (refreshed {Timestamp})", staleTimestamp);
+            _ = RefreshCacheInBackgroundAsync();
+            return (stale, staleTimestamp);
+        }
+
         await RefreshLock.WaitAsync(cancellationToken);
         try
         {
@@ -148,6 +170,7 @@ public class BreweryService : IBreweryService
                 _logger.LogInformation("Reusing {Count} breweries already persisted in storage (refreshed {Timestamp})", stored.Items.Count, storedTimestamp);
                 _cache.Set(CacheKey, stored.Items, cacheDuration);
                 _cache.Set(CacheTimestampKey, storedTimestamp, cacheDuration);
+                SetStaleCache(stored.Items, storedTimestamp, cacheDuration);
                 return (stored.Items, storedTimestamp);
             }
 
@@ -158,6 +181,7 @@ public class BreweryService : IBreweryService
 
             _cache.Set(CacheKey, fresh, cacheDuration);
             _cache.Set(CacheTimestampKey, refreshedAt, cacheDuration);
+            SetStaleCache(fresh, refreshedAt, cacheDuration);
 
             return (fresh, refreshedAt);
         }
@@ -192,6 +216,50 @@ public class BreweryService : IBreweryService
         }
 
         return false;
+    }
+
+    private bool TryGetStaleCached(out IReadOnlyList<Brewery> cached, out DateTimeOffset cachedTimestamp)
+    {
+        cached = Array.Empty<Brewery>();
+        cachedTimestamp = default;
+
+        return _cache.TryGetValue(StaleCacheKey, out cached) &&
+               _cache.TryGetValue(StaleCacheTimestampKey, out cachedTimestamp);
+    }
+
+    private void SetStaleCache(IReadOnlyList<Brewery> breweries, DateTimeOffset refreshedAt, TimeSpan freshDuration)
+    {
+        var staleDuration = TimeSpan.FromMinutes(Math.Max(freshDuration.TotalMinutes * 3, freshDuration.TotalMinutes + 1));
+        _cache.Set(StaleCacheKey, breweries, staleDuration);
+        _cache.Set(StaleCacheTimestampKey, refreshedAt, staleDuration);
+    }
+
+    private async Task RefreshCacheInBackgroundAsync()
+    {
+        if (!await RefreshLock.WaitAsync(0))
+        {
+            return;
+        }
+
+        try
+        {
+            var fresh = await _apiClient.GetAllBreweriesAsync();
+            var refreshedAt = DateTimeOffset.UtcNow;
+            var duration = TimeSpan.FromMinutes(_cacheOptions.DurationMinutes);
+            await _repository.ReplaceAllAsync(fresh, refreshedAt);
+            _cache.Set(CacheKey, fresh, duration);
+            _cache.Set(CacheTimestampKey, refreshedAt, duration);
+            SetStaleCache(fresh, refreshedAt, duration);
+            _logger.LogInformation("Background brewery cache refresh completed with {Count} records", fresh.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Background brewery cache refresh failed; stale data remains available");
+        }
+        finally
+        {
+            RefreshLock.Release();
+        }
     }
 
     // Returns a clone so distance calculations never mutate shared cached/repository instances.

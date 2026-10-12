@@ -53,6 +53,41 @@ public class SqliteBreweryRepository : IBreweryRepository
         };
     }
 
+    public async Task<BreweryQueryResult> QueryAsync(BreweryQueryParameters query, CancellationToken cancellationToken = default)
+    {
+        var source = _dbContext.Breweries.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim();
+            source = source.Where(b => b.Name.Contains(term) || b.City.Contains(term) || (b.State != null && b.State.Contains(term)));
+        }
+
+        source = query.SortBy switch
+        {
+            BrewerySortBy.Name when query.SortDirection == SortDirection.Ascending => source.OrderBy(b => b.Name),
+            BrewerySortBy.Name => source.OrderByDescending(b => b.Name),
+            BrewerySortBy.City when query.SortDirection == SortDirection.Ascending => source.OrderBy(b => b.City),
+            BrewerySortBy.City => source.OrderByDescending(b => b.City),
+            _ => source.OrderBy(b => b.Id)
+        };
+
+        var totalCount = await source.CountAsync(cancellationToken);
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, 500);
+        var entities = await source.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        var metadata = await _dbContext.RefreshMetadata.AsNoTracking().FirstOrDefaultAsync(m => m.Id == MetadataRowId, cancellationToken);
+
+        return new BreweryQueryResult
+        {
+            Items = entities.Select(ToModel).ToList(),
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            LastRefreshedUtc = metadata?.LastRefreshedUtc ?? DateTimeOffset.UtcNow
+        };
+    }
+
     private static BreweryEntity ToEntity(Brewery brewery) => new()
     {
         Id = brewery.Id,

@@ -7,4 +7,5 @@ public interface IBreweryRepository
 {
     Task ReplaceAllAsync(IEnumerable<Models.Brewery> breweries, DateTimeOffset refreshedAtUtc, CancellationToken cancellationToken = default);
     Task<Models.BrewerySnapshot> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<Models.BreweryQueryResult> QueryAsync(Models.BreweryQueryParameters query, CancellationToken cancellationToken = default);
 }
