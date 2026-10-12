@@ -133,7 +133,7 @@ cd tests\ElfBeauty.BreweryApi.Tests
 dotnet test
 ```
 
-36 tests, all deterministic and offline (no live network calls — the external API client is either
+37 tests, all deterministic and offline (no live network calls — the external API client is either
 mocked or exercised against a stubbed `HttpMessageHandler`):
 
 - **Unit tests**: mapping (including malformed/missing lat-long), distance calculation, search, sort
