@@ -95,10 +95,10 @@ public class BreweryService : IBreweryService
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 500);
 
-        var pageItems = materialized
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
+        var offset = (long)(page - 1) * pageSize;
+        var pageItems = offset > int.MaxValue
+            ? new List<Brewery>()
+            : materialized.Skip((int)offset).Take(pageSize).ToList();
 
         return new PagedResult<Brewery>
         {

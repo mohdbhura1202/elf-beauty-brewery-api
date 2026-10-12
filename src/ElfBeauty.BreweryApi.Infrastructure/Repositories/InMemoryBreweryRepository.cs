@@ -37,7 +37,10 @@ public class InMemoryBreweryRepository : IBreweryRepository
             var filtered = ApplyQuery(_breweries, query);
             var page = Math.Max(1, query.Page);
             var pageSize = Math.Clamp(query.PageSize, 1, 500);
-            var items = filtered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var offset = (long)(page - 1) * pageSize;
+            var items = offset > int.MaxValue
+                ? new List<Brewery>()
+                : filtered.Skip((int)offset).Take(pageSize).ToList();
 
             return Task.FromResult(new BreweryQueryResult
             {

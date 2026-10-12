@@ -75,7 +75,9 @@ public class SqliteBreweryRepository : IBreweryRepository
         var totalCount = await source.CountAsync(cancellationToken);
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 500);
-        var entities = await source.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        var entities = page > int.MaxValue / pageSize
+            ? new List<BreweryEntity>()
+            : await source.Skip((int)((long)(page - 1) * pageSize)).Take(pageSize).ToListAsync(cancellationToken);
         var metadata = await _dbContext.RefreshMetadata.AsNoTracking().FirstOrDefaultAsync(m => m.Id == MetadataRowId, cancellationToken);
 
         return new BreweryQueryResult

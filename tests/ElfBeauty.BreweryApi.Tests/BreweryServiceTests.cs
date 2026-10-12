@@ -265,4 +265,26 @@ public class BreweryServiceTests
 
         Assert.All(secondResult.Items, b => Assert.Null(b.DistanceInMiles));
     }
+
+    [Fact]
+    public async Task GetBreweriesAsync_VeryLargePage_ReturnsEmptyPageWithoutOverflow()
+    {
+        var apiClient = new Mock<IBreweryApiClient>();
+        apiClient.Setup(c => c.GetAllBreweriesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(SampleBreweries());
+        var repository = EmptyRepository();
+        var cache = EmptyCache();
+
+        var service = CreateService(apiClient, repository, cache);
+
+        var result = await service.GetBreweriesAsync(new BreweryQueryParameters
+        {
+            Page = int.MaxValue,
+            PageSize = 500,
+            Latitude = 40.015,
+            Longitude = -105.2705
+        });
+
+        Assert.Empty(result.Items);
+        Assert.Equal(int.MaxValue, result.Page);
+    }
 }
